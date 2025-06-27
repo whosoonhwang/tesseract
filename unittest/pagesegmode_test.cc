@@ -9,35 +9,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#if defined(_WIN32)
-#include <io.h>         // for _access
-#else
-#include <unistd.h>     // for access
-#endif
+#include <allheaders.h>
+#include <tesseract/baseapi.h>
+#include <filesystem>
 #include <string>
-#include "allheaders.h"
-#include "baseapi.h"
 #include "helpers.h"
-#include "log.h"
 #include "include_gunit.h"
+#include "image.h"
+#include "log.h"
 
-namespace {
-
-// Replacement for std::filesystem::exists (C++-17)
-static bool file_exists(const char* filename) {
-#if defined(_WIN32)
-  return _access(filename, 0) == 0;
-#else
-  return access(filename, 0) == 0;
-#endif
-}
+namespace tesseract {
 
 // The fixture for testing Tesseract.
 class PageSegModeTest : public testing::Test {
- protected:
+protected:
   PageSegModeTest() = default;
-  ~PageSegModeTest() {
-    pixDestroy(&src_pix_);
+  ~PageSegModeTest() override {
+    src_pix_.destroy();
   }
 
   void SetUp() override {
@@ -45,8 +33,8 @@ class PageSegModeTest : public testing::Test {
     std::locale::global(system_locale);
   }
 
-  void SetImage(const char* filename) {
-    pixDestroy(&src_pix_);
+  void SetImage(const char *filename) {
+    src_pix_.destroy();
     src_pix_ = pixRead(filename);
     api_.Init(TESSDATA_DIR, "eng", tesseract::OEM_TESSERACT_ONLY);
     api_.SetImage(src_pix_);
@@ -54,11 +42,11 @@ class PageSegModeTest : public testing::Test {
 
   // Tests that the given rectangle produces exactly the given text in the
   // given segmentation mode (after chopping off the last 2 newlines.)
-  void VerifyRectText(tesseract::PageSegMode mode, const char* str,
-                      int left, int top, int width, int height) {
+  void VerifyRectText(tesseract::PageSegMode mode, const char *str, int left, int top, int width,
+                      int height) {
     api_.SetPageSegMode(mode);
     api_.SetRectangle(left, top, width, height);
-    char* result = api_.GetUTF8Text();
+    char *result = api_.GetUTF8Text();
     chomp_string(result);
     chomp_string(result);
     EXPECT_STREQ(str, result);
@@ -67,16 +55,16 @@ class PageSegModeTest : public testing::Test {
 
   // Tests that the given rectangle does NOT produce the given text in the
   // given segmentation mode.
-  void NotRectText(tesseract::PageSegMode mode, const char* str,
-                   int left, int top, int width, int height) {
+  void NotRectText(tesseract::PageSegMode mode, const char *str, int left, int top, int width,
+                   int height) {
     api_.SetPageSegMode(mode);
     api_.SetRectangle(left, top, width, height);
-    char* result = api_.GetUTF8Text();
+    char *result = api_.GetUTF8Text();
     EXPECT_STRNE(str, result);
     delete[] result;
   }
 
-  Pix* src_pix_ = nullptr;
+  Image src_pix_ = nullptr;
   std::string ocr_text_;
   tesseract::TessBaseAPI api_;
 };
@@ -85,7 +73,7 @@ class PageSegModeTest : public testing::Test {
 // and differently to line and block mode.
 TEST_F(PageSegModeTest, WordTest) {
   std::string filename = file::JoinPath(TESTING_DIR, "segmodeimg.tif");
-  if (!file_exists(filename.c_str())) {
+  if (!std::filesystem::exists(filename)) {
     LOG(INFO) << "Skip test because of missing " << filename << '\n';
     GTEST_SKIP();
   } else {
@@ -95,20 +83,20 @@ TEST_F(PageSegModeTest, WordTest) {
     VerifyRectText(tesseract::PSM_SINGLE_WORD, "183", 1411, 252, 78, 62);
     VerifyRectText(tesseract::PSM_SINGLE_WORD, "183", 1396, 218, 114, 102);
     // Test a random pair of words as a line
-    VerifyRectText(tesseract::PSM_SINGLE_LINE,
-                   "What should", 237, 393, 256, 36);
+    VerifyRectText(tesseract::PSM_SINGLE_LINE, "What should", 237, 393, 256, 36);
+  #ifdef DISABLED_LEGACY_ENGINE
+    // Skip check as LSTM mode adds a space.
+    LOG(INFO) << "Skip `Whatshould` test in LSTM Mode\n";
+  #else
     // Test a random pair of words as a word
-    VerifyRectText(tesseract::PSM_SINGLE_WORD,
-                   "Whatshould", 237, 393, 256, 36);
+    VerifyRectText(tesseract::PSM_SINGLE_WORD, "Whatshould", 237, 393, 256, 36);
+  #endif
     // Test single block mode.
-    VerifyRectText(tesseract::PSM_SINGLE_BLOCK,
-                   "both the\nfrom the", 237, 450, 172, 94);
+    VerifyRectText(tesseract::PSM_SINGLE_BLOCK, "both the\nfrom the", 237, 450, 172, 94);
     // But doesn't work in line or word mode.
-    NotRectText(tesseract::PSM_SINGLE_LINE,
-                "both the\nfrom the", 237, 450, 172, 94);
-    NotRectText(tesseract::PSM_SINGLE_WORD,
-                "both the\nfrom the", 237, 450, 172, 94);
+    NotRectText(tesseract::PSM_SINGLE_LINE, "both the\nfrom the", 237, 450, 172, 94);
+    NotRectText(tesseract::PSM_SINGLE_WORD, "both the\nfrom the", 237, 450, 172, 94);
   }
 }
 
-}  // namespace
+} // namespace tesseract
